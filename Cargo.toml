@@ -1,0 +1,11 @@
+[package]
+name = "wallbash"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+image = { version = "0.25.2", default-features = false, features = ["png", "jpeg"] }
+kmeans_colors = { version = "0.6.0", default-features = false, features = ["palette_color"]}
+log = "0.4.22"
+palette = { version = "0.7.6", default-features = false, features = ["std"] }
