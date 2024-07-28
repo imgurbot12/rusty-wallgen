@@ -1,7 +1,6 @@
 //! Color Operations
 
-use anyhow::Result;
-use palette::{FromColor, Hsl, Hsv, IntoColor, Lighten, Saturate, SetHue, ShiftHue, Srgb};
+use palette::{FromColor, Hsl, Hsv, IntoColor, Saturate, SetHue, ShiftHue, Srgb};
 
 #[derive(Debug)]
 pub struct Color(pub Srgb<f32>);
@@ -15,12 +14,6 @@ impl Color {
 }
 
 impl Color {
-    pub fn from_hex(hex: &str) -> Result<Self> {
-        let i = u32::from_str_radix(hex.trim_start_matches("#"), 16)?;
-        let rgb = Srgb::from(i);
-        println!("color: {rgb:?}");
-        Ok(Self(rgb.into_format()))
-    }
     pub fn from_hue(&self, saturation: f32, value: f32) -> Color {
         let hsv: Hsv = self.0.into_color();
         let hue = (hsv.hue.into_inner() * 1000.0).round() / 1000.0;
@@ -58,26 +51,7 @@ impl Color {
         let mut hv = hue as f32 / 100.0;
         sv = if sv > 1.0 { (sv - 1.0) * 2.0 } else { sv - 1.0 };
         hv = (360.0 * hv) % 360.0;
-
-        // 1.88 => lighten(0.43)
-        // 1.20 => lighten(0.10)
-        // 0.16 => lighten(-0.84)
-        // 0.50 => lighten(-0.50)
-        // 1.30 => ligten(0.15)
-
-        // 0.2  => desaturate(0.8)
-        // 0.8  => desaturate(0.2)
-        // 1.30 => saturate(0.62)
-        // 1.80 => saturate(1.40)
-        //
-        // 1.80 => shift_hue(360.0 * 1.40) % 360.0
-        // 1.40 => shift_hue(360.0 * 1.20) % 360.0
-        // 1.20 => shift_hue(360.0 * 1.10) % 360.0
-        // 0.8 => shift_hue(360.0 * 0.8) % 360.0
-
-        // 10 * 150 = let vb = 0.02;
-        // 10 * 188 = let bv = 0.035;
-        // 100 * 150 = let bv = 0.32;
+        // finalize modulation
         let hsl: Hsl = color.hsl();
         let rgb = hsl.saturate(sv).shift_hue(hv).into_color();
         Self(rgb)

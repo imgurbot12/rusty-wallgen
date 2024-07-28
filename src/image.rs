@@ -2,22 +2,25 @@
 
 use anyhow::Result;
 use image::ImageReader;
-use kmeans_colors::{get_kmeans_hamerly, Kmeans};
+use kmeans_colors::get_kmeans_hamerly;
 use palette::{cast::ComponentsAs, FromColor, Hsl, IntoColor, Srgb};
+use rayon::prelude::*;
 
 use crate::color::Color;
 
 pub struct RawImage(Vec<Srgb<f32>>);
 
 impl RawImage {
-    pub fn new(path: &str) -> Result<Self> {
+    pub fn new(path: &str, thumbnail: Option<u32>) -> Result<Self> {
         // convert image to raw pixel buffer
-        let img = ImageReader::open(path)?.with_guessed_format()?.decode()?;
-        // .thumbnail(512, 512);
+        let mut img = ImageReader::open(path)?.with_guessed_format()?.decode()?;
+        if let Some(size) = thumbnail {
+            img = img.thumbnail(size, size);
+        }
         let buf: Vec<u8> = img.into_rgb8().into_raw();
         // convert raw pixels into srgb objects
         let color_buffer: &[Srgb<u8>] = buf.components_as();
-        let buffer = color_buffer.iter().map(|x| x.into_format()).collect();
+        let buffer = color_buffer.par_iter().map(|x| x.into_format()).collect();
         Ok(Self(buffer))
     }
 
@@ -28,14 +31,11 @@ impl RawImage {
         let seed = 12345;
         let verbose = false;
         // run kmeans
-        let mut result = Kmeans::new();
-        for i in 0..runs {
-            let run_result =
-                get_kmeans_hamerly(k, max_iter, converge, verbose, &self.0, seed + i as u64);
-            if run_result.score < result.score {
-                result = run_result;
-            }
-        }
+        let result = (0..runs)
+            .par_bridge()
+            .map(|i| get_kmeans_hamerly(k, max_iter, converge, verbose, &self.0, seed + i as u64))
+            .min_by(|r1, r2| r1.score.partial_cmp(&r2.score).unwrap())
+            .expect("no kmeans result available");
         // convert indexed colors back to hex-colors for output
         result
             .centroids
@@ -45,14 +45,14 @@ impl RawImage {
     }
 
     pub fn mean_luminocity(&self) -> f32 {
-        let pixels: Vec<Color> = self.0.iter().map(|c| Color::from_color(*c)).collect();
-        let sum: f32 = pixels.iter().map(|c| c.luminocity()).sum();
+        let pixels: Vec<Color> = self.0.par_iter().map(|c| Color::from_color(*c)).collect();
+        let sum: f32 = pixels.par_iter().map(|c| c.luminocity()).sum();
         sum / pixels.len() as f32
     }
 
     pub fn mean_saturation(&self) -> f32 {
-        let pixels: Vec<Hsl<_>> = self.0.iter().map(|c| (*c).into_color()).collect();
-        let sum: f32 = pixels.iter().map(|c| c.saturation).sum();
+        let pixels: Vec<Hsl<_>> = self.0.par_iter().map(|c| (*c).into_color()).collect();
+        let sum: f32 = pixels.par_iter().map(|c| c.saturation).sum();
         sum / pixels.len() as f32
     }
 }
