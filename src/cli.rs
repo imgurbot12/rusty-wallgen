@@ -1,5 +1,7 @@
 //! Cli Implementation
 
+use std::io::Read;
+
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 
@@ -16,9 +18,55 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// Render palette definition to template
+    Fill(FillArgs),
     /// Generate a new Color Palette
     Generate(GenerateArgs),
-    Test,
+}
+
+#[derive(Debug, Args)]
+pub struct FillArgs {
+    /// Template to render
+    template: Option<String>,
+    /// Palette definition used to render template
+    #[clap(short, long, default_value = "colors.json")]
+    palette: String,
+    /// Output
+    #[clap(short, long)]
+    output: Option<String>,
+}
+
+impl FillArgs {
+    fn read_palette(&self) -> Result<Palette> {
+        log::info!("reading palette from {:?}", self.palette);
+        let s = std::fs::read_to_string(&self.palette).context("file read failed")?;
+        let p: Palette = serde_json::from_str(&s).context("deserialize failed")?;
+        Ok(p)
+    }
+    fn read_template(&self) -> Result<String> {
+        if let Some(template) = self.template.as_ref() {
+            log::info!("reading template from {template:?}");
+            return Ok(std::fs::read_to_string(template).context("file read failed")?);
+        }
+        log::info!("reading template from stdin");
+        let mut template = String::new();
+        let mut stdin = std::io::stdin();
+        stdin
+            .read_to_string(&mut template)
+            .context("failed to read stdin")?;
+        Ok(template)
+    }
+    pub fn fill(self) -> Result<()> {
+        let palette = self.read_palette().context("failed to load palette")?;
+        let template = self.read_template().context("failed to read template")?;
+        let mut engine = crate::template::Engine::new();
+        let result = engine.render(&template, palette).context("render failed")?;
+        match self.output {
+            Some(output) => std::fs::write(output, result).context("failed to write output")?,
+            None => println!("{result}"),
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Args)]
@@ -40,7 +88,7 @@ impl GenerateArgs {
     pub fn generate(self) -> Result<()> {
         let jpg = RawImage::new(&self.path, self.size).context("failed to load image")?;
 
-        log::debug!("running kmeans to find primary colors");
+        log::info!("calculating primary colors");
         let mut colors = jpg.kmeans(4);
         let mut sort_mode = "dark";
 
@@ -49,7 +97,7 @@ impl GenerateArgs {
             sort_mode = "light";
             colors.reverse()
         }
-        log::debug!("determined color-mode: {sort_mode:?}");
+        log::info!("determined color-mode: {sort_mode:?}");
 
         let mut gradiant = self.palette;
         if gradiant == Gradiant::Auto {
@@ -61,7 +109,7 @@ impl GenerateArgs {
             }
         }
 
-        log::debug!("rendering text/accent colors");
+        log::info!("rendering text/accent colors");
         let mut palettes = vec![];
         for color in colors {
             let dark = color.luminocity() < 0.5;
