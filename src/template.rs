@@ -30,11 +30,14 @@ impl<'a> Engine<'a> {
         env.add_filter("rgb", rgb);
         Self { env }
     }
-    pub fn render(&mut self, template: &'a str, palette: Palette) -> Result<String> {
+    pub fn render(&mut self, template: &'a str, palette: &Palette) -> Result<String> {
         self.env
             .add_template("main", &template)
             .context("failed to add template")?;
-        let tmpl = self.env.get_template("main")?;
+        let tmpl = self
+            .env
+            .get_template("main")
+            .context("failed to load template")?;
         Ok(tmpl.render(context!(
             file => palette.file,
             theme => palette.theme,
